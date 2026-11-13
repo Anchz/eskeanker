@@ -1,3 +1,5 @@
+#include "application.h"
+
 #include <windows.h>
 
 static LRESULT CALLBACK window_procedure(HWND window_handle, UINT message, WPARAM word_parameter, LPARAM long_parameter) {
@@ -5,10 +7,11 @@ static LRESULT CALLBACK window_procedure(HWND window_handle, UINT message, WPARA
 		// case WM_CLOSE:
 		case WM_DESTROY:
 			PostQuitMessage(0);
+
 			return 0;
 	}
 
-	return DefWindowProc(window_handle, message, word_parameter, long_parameter);
+	return DefWindowProcW(window_handle, message, word_parameter, long_parameter);
 }
 
 int WINAPI wWinMain(HINSTANCE instance_handle, HINSTANCE previous_instance_handle, PWSTR arguments, int display_command) {
@@ -28,29 +31,57 @@ int WINAPI wWinMain(HINSTANCE instance_handle, HINSTANCE previous_instance_handl
 		HWND window_handle = CreateWindowW(window_class_name, window_name, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, nullptr, nullptr, instance_handle, nullptr);
 
 		ShowWindow(window_handle, display_command);
+
+		application_initialize();
 	}
 
 	{
+		LARGE_INTEGER frequency;
+		LARGE_INTEGER leading_counter;
+		LARGE_INTEGER trailing_counter;
+
+		QueryPerformanceFrequency(&frequency);
+		QueryPerformanceCounter(&trailing_counter);
+
+		uint64_t accumulator = 0;
+
 		bool running = true;
 
-		while (running) {
-			MSG message;
+		MSG message;
 
-			while (PeekMessage(&message, nullptr, 0, 0, PM_REMOVE)) {
+		while (running) {
+			QueryPerformanceCounter(&leading_counter);
+
+			uint64_t frame_duration = (leading_counter.QuadPart - trailing_counter.QuadPart) * 1'000'000'000 / frequency.QuadPart;
+
+			accumulator += frame_duration;
+
+			while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
 				if (message.message == WM_QUIT) {
 					running = false;
+
 					break;
 				}
-				
+
 				TranslateMessage(&message);
 				DispatchMessageW(&message);
 			}
 
-			
+			while (accumulator >= application_update_duration) {
+				application_update();
+
+				accumulator -= application_update_duration;
+			}
+
+			application_render();
+
+			trailing_counter = leading_counter;
 		}
 	}
 
 	{
+		application_terminate();
+
 		return 0;
 	}
 }
